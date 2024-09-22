@@ -1,8 +1,6 @@
 use svg::node::element::Path;
-use glam::Vec2;
-use crate::shape::Rect;
 
-use svg::{Document, Node};
+use svg::{Document};
 
 pub trait Parseable {
     fn parse(&self) -> Path;

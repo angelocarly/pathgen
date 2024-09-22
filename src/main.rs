@@ -1,9 +1,9 @@
+use crate::export::parser::{Parseable, Parser};
 use glam::Vec2;
-use crate::parser::{Parseable, Parser};
 use crate::shape::Rect;
 
 mod shape;
-mod parser;
+mod export;
 
 fn main() {
 

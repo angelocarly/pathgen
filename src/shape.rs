@@ -1,7 +1,6 @@
 use glam::Vec2;
-use svg::Node;
 use svg::node::element::Path;
-use crate::parser::Parseable;
+use crate::export::parser::Parseable;
 
 fn param(input: Vec2) -> (f32, f32) {
     (input.x, input.y)
