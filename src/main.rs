@@ -1,20 +1,16 @@
+use glam::Vec2;
+use crate::parser::Parser;
+use crate::shape::Rect;
+
+mod shape;
+mod parser;
+
 fn main() {
-    let data = Data::new()
-        .move_to((10, 10))
-        .line_by((0, 50))
-        .line_by((50, 0))
-        .line_by((0, -50))
-        .close();
 
-    let path = Path::new()
-        .set("fill", "none")
-        .set("stroke", "black")
-        .set("stroke-width", 3)
-        .set("d", data);
+    let r = Rect {
+        p1: Vec2::new(0.0, 0.0),
+        p2: Vec2::new(1.0, 1.0),
+    };
 
-    let document = Document::new()
-        .set("viewBox", (0, 0, 70, 70))
-        .add(path);
-
-    svg::save("image.svg", &document).unwrap();
+    Parser::parse(r);
 }

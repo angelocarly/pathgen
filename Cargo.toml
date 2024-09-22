@@ -1,7 +1,8 @@
 [package]
-name = "svg-gen"
+name = "pathgen"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 svg = "0.17.0"
+glam = "0.29.0"
