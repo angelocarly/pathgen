@@ -23,7 +23,7 @@ impl Parseable for Rect {
         Path::new()
             .set("fill", "none")
             .set("stroke", "black")
-            .set("stroke-width", 3)
+            .set("stroke-width", 0.3f32)
             .set("d", data)
     }
 }
