@@ -17,7 +17,7 @@ cargo run
 I use [vpype](https://github.com/abey79/vpype) to view the path.
 
 ```bash
-vpype read path.svg show
+vpype read target/path.svg show
 ```
 
 ## Exporting to gcode
@@ -25,5 +25,5 @@ vpype read path.svg show
 SVG can be exported to gcode, using the [vpype-gcode](https://github.com/plottertools/vpype-gcode) plugin.
 
 ```bash
-vpype read path.svg gwrite out.gcode
+vpype read target/path.svg gwrite out.gcode
 ```

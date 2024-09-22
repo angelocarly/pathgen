@@ -19,6 +19,6 @@ impl Parser {
             document = document.add(p.parse());
         };
 
-        svg::save("target/image.svg", &document).unwrap();
+        svg::save("target/path.svg", &document).unwrap();
     }
 }
