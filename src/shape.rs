@@ -27,3 +27,23 @@ impl Parseable for Rect {
             .set("d", data)
     }
 }
+
+pub struct Line {
+    pub p1: Vec2,
+    pub p2: Vec2,
+}
+
+impl Parseable for Line {
+    fn parse(&self) -> Path {
+        let data = svg::node::element::path::Data::new()
+            .move_to(param(self.p1))
+            .line_to(param(self.p2))
+            .close();
+
+        Path::new()
+            .set("fill", "none")
+            .set("stroke", "black")
+            .set("stroke-width", 0.3f32)
+            .set("d", data)
+    }
+}
