@@ -11,18 +11,16 @@ fn main() {
 
     let mut objects : Vec<Box<dyn Parseable>> = Vec::new();
 
-    for i in 0..10 {
-        let r = Rect {
-            pos: Vec2::new(1.0, 1.0) * i as f32,
-            size: size,
-        };
-        objects.push(Box::new(r));
+    let basepos = Vec2::new(10.0, 4.0);
 
-        let l = Line {
-            p1: Vec2::new(1.0, 2.0) * i as f32,
-            p2: Vec2::new(1.0, 2.0) * i as f32 + Vec2::new( 10.0, 0.0 ),
-        };
-        objects.push(Box::new(l));
+    for x in 0..12 {
+        for y in 0..18 {
+            let l = Line {
+                p1: basepos + Vec2::new(x as f32 * 4. - ( x * y ) as f32 * 0.2, y as f32 * 2.3),
+                p2: basepos + Vec2::new(x as f32 * 4. - ( x * y ) as f32 * 0.2, y as f32 * 2.3) + Vec2::new(1.0, 1.0),
+            };
+            objects.push(Box::new(l));
+        }
     }
 
     Parser::parse(objects);
