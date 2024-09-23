@@ -37,8 +37,7 @@ impl Parseable for Line {
     fn parse(&self) -> Path {
         let data = svg::node::element::path::Data::new()
             .move_to(param(self.p1))
-            .line_to(param(self.p2))
-            .close();
+            .line_to(param(self.p2));
 
         Path::new()
             .set("fill", "none")
