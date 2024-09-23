@@ -1,6 +1,4 @@
 use glam::Vec2;
-use svg::node::element::Path;
-use crate::export::parser::Parseable;
 
 pub struct Rect {
     pub pos: Vec2,

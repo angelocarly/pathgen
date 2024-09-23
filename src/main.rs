@@ -1,13 +1,11 @@
 use crate::export::parser::{Parseable, Parser};
 use glam::Vec2;
-use crate::shape::{Line, Rect};
+use crate::shape::{Line};
 
 mod shape;
 mod export;
 
 fn main() {
-
-    let size = Vec2::new(1.0, 1.0);
 
     let mut objects : Vec<Box<dyn Parseable>> = Vec::new();
 
