@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 svg = "0.17.0"
 glam = "0.29.0"
+rand = "0.9.0-alpha.2"

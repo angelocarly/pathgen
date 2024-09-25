@@ -1,24 +1,41 @@
 use crate::export::parser::{Parseable, Parser};
 use glam::Vec2;
-use crate::shape::{Line};
+use rand::random;
+use crate::shape::{LineStrip, QuadraticBezier};
 
 mod shape;
 mod export;
 
 fn main() {
 
-    let mut objects : Vec<Box<dyn Parseable>> = Vec::new();
+    let basepos = Vec2::new(10.0, 10.0);
 
-    let basepos = Vec2::new(10.0, 4.0);
-
-    for x in 0..12 {
-        for y in 0..18 {
-            let l = Line {
-                p1: basepos + Vec2::new(x as f32 * 4. - ( x * y ) as f32 * 0.2, y as f32 * 2.3),
-                p2: basepos + Vec2::new(x as f32 * 4. - ( x * y ) as f32 * 0.2, y as f32 * 2.3) + Vec2::new(1.0, 1.0),
-            };
-            objects.push(Box::new(l));
+    let mut lines = Vec::new();
+    let line_count = 30;
+    let elements = 10;
+    for l in 0..line_count {
+        let mut points = Vec::new();
+        for x in 0..elements {
+            points.push(Vec2::new(basepos.x + x as f32 * 6., basepos.y + l as f32));
         }
+        lines.push(LineStrip {
+            points
+        });
+    }
+
+    for x in 0..elements {
+        let offset: Vec2 = Vec2::new(random::<f32>(), random::<f32>()) * 2.0f32 - 1.0f32;
+        let mut i = 0;
+        for l in &mut lines {
+            l.points.get_mut(x).unwrap().x += offset.x * i as f32 * 0.5;
+            l.points.get_mut(x).unwrap().y += offset.y * i as f32 * 0.5;
+            i += 1;
+        }
+    }
+
+    let mut objects : Vec<Box<dyn Parseable>> = Vec::new();
+    for line in lines {
+        objects.push(Box::new(line));
     }
 
     Parser::parse(objects);
