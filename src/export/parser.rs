@@ -87,9 +87,26 @@ impl Parser {
         let mut document = Document::new()
             .set("viewBox", (0, 0, 70, 70));
 
+        let mut info_group = svg::node::element::Group::new()
+            .set("id", "info");
+
+        info_group = info_group.add(svg::node::element::Rectangle::new()
+            .set("x", 0)
+            .set("y", 0)
+            .set("width", 70)
+            .set("height", 70)
+            .set("stroke-width", 0)
+            .set("fill", "white"));
+
+        document = document.add(info_group);
+
+        let mut path_group = svg::node::element::Group::new()
+            .set("id", "paths");
         for p in paths {
-            document = document.add(p.parse());
+            path_group = path_group.add(p.parse());
         };
+
+        document = document.add(path_group);
 
         svg::save("target/path.svg", &document).unwrap();
     }
