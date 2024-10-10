@@ -24,7 +24,7 @@ impl Parseable for Exx {
             (self.p3.x, self.p3.y),
         ]);
 
-        for len in 0..20 {
+        for len in 0..30 {
 
             let l1 = f64::min((self.p2 - self.p1).length(), len as f64);
             let q1 = self.p2 - n1 * l1;
