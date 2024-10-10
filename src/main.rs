@@ -1,34 +1,26 @@
 mod shape;
 mod export;
-mod World;
+mod world;
 
-use crate::export::parser::{Parseable, Parser};
-use crate::shape::Exx;
+use crate::export::parser::{Parser};
 use glam::DVec2;
 use rand::random;
-use crate::World::{Line, WorldGen};
+use crate::world::{WorldGen};
 
 fn main() {
 
     let mut world = WorldGen::new();
 
     let scale = 350.;
-    let line = Line {
-        p1: DVec2::new(random::<f64>() * scale, random::<f64>() * scale),
-        p2: DVec2::new(random::<f64>() * scale, random::<f64>() * scale),
-    };
-    world.add_line(line);
+    world.add_line(DVec2::new(random::<f64>() * scale, random::<f64>() * scale), DVec2::new(random::<f64>() * scale, random::<f64>() * scale));
 
-    let mut cut_count = 0;
-    while cut_count < 2 {
-        let l = Line {
-            p1: DVec2::new(random::<f64>() * scale, random::<f64>() * scale),
-            p2: DVec2::new(random::<f64>() * scale, random::<f64>() * scale),
-        };
-        if world.add_line(l) {
-            cut_count += 1;
-        }
+    for _ in 0..10 {
+        world.add_line(
+            DVec2::new(random::<f64>() * scale, random::<f64>() * scale),
+            DVec2::new(random::<f64>() * scale, random::<f64>() * scale)
+        );
     }
 
-    Parser::parse(world.objects());
+    let objects = world.convert();
+    Parser::parse(&objects);
 }
