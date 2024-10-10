@@ -18,18 +18,19 @@ impl Parseable for Exx {
         let n1 = (self.p2 - self.p1).normalize();
         let n2 = (self.p2 - self.p3).normalize();
 
+        doc.push_path(1, vec![
+            (self.p1.x, self.p1.y),
+            (self.p2.x, self.p2.y),
+            (self.p3.x, self.p3.y),
+        ]);
+
         for len in 0..20 {
+
             let l1 = f64::min((self.p2 - self.p1).length(), len as f64);
             let q1 = self.p2 - n1 * l1;
 
             let l2 = f64::min((self.p2 - self.p3).length(), len as f64);
             let q2 = self.p2 - n2 * l2;
-
-            doc.push_path(1, vec![
-                (self.p1.x, self.p1.y),
-                (self.p2.x, self.p2.y),
-                (self.p3.x, self.p3.y),
-            ]);
 
             let mut path = vsvg::Path::from_svg(
                 format!(

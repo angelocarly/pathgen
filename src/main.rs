@@ -1,11 +1,12 @@
 mod shape;
 mod export;
+mod World;
 
 use crate::export::parser::{Parseable, Parser};
 use crate::shape::Exx;
 use glam::DVec2;
 use rand::random;
-
+use crate::World::WorldGen;
 /*
  * Intersection of two lines functions
  */
@@ -45,15 +46,18 @@ fn intersect_lines(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
 }
 
 fn main() {
+
+    let world = WorldGen::new();
+
     let basepos = DVec2::new(10.0, 10.0);
 
     let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
 
-    let scale = 100.;
-    let a = basepos + DVec2::new(random::<f64>() * 100., random::<f64>() * 100.);
-    let b = basepos + DVec2::new(random::<f64>() * 100., random::<f64>() * 100.);
-    let c = basepos + DVec2::new(random::<f64>() * 100., random::<f64>() * 100.);
-    let d = basepos + DVec2::new(random::<f64>() * 100., random::<f64>() * 100.);
+    let scale = 350.;
+    let a = basepos + DVec2::new(random::<f64>() * scale, random::<f64>() * scale);
+    let b = basepos + DVec2::new(random::<f64>() * scale, random::<f64>() * scale);
+    let c = basepos + DVec2::new(random::<f64>() * scale, random::<f64>() * scale);
+    let d = basepos + DVec2::new(random::<f64>() * scale, random::<f64>() * scale);
 
     if let Some(r) = intersect_lines(a, b, c, d) {
         objects.push(Box::new(Exx{
@@ -81,5 +85,5 @@ fn main() {
         }
     }
 
-    Parser::parse(objects);
+    Parser::parse(world.objects());
 }
