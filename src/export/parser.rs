@@ -9,9 +9,9 @@ pub struct Parser {
 
 impl Parser {
 
-    pub fn parse(paths: &[Box<dyn Parseable>]) {
+    pub fn parse(paths: &[Box<dyn Parseable>], page_size: PageSize) {
 
-        let mut doc = vsvg::Document::new_with_page_size(PageSize::Custom(100., 100., Unit::Mm));
+        let mut doc = vsvg::Document::new_with_page_size(page_size);
 
         /* == Layers == */
         let mut layer = vsvg::Layer::default();

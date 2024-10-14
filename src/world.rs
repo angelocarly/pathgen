@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use crate::DVec2;
 use crate::export::parser::Parseable;
-use crate::shape::{Exx, Line};
+use crate::shape::{Exx, Line, Point};
 /*
  * Intersection of two lines functions
  */
@@ -41,7 +41,7 @@ fn intersect_lines(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
 }
 
 pub struct WorldGen {
-    vertices: Vec<Vertex>,
+    vertices: Vec<DVec2>,
     lines: Vec< VLine >
 }
 
@@ -70,23 +70,35 @@ impl WorldGen {
         let mut intersect = false;
         let mut line_vertices = Vec::new();
 
-        let i1 = self.vertices.len();
-        self.vertices.push(Vertex{ p: p1 });
+        let i1;
+        if !self.vertices.contains(&p1) {
+            i1 = self.vertices.len();
+            self.vertices.push(p1);
+        } else {
+            i1 = self.vertices.iter().position(|&r| { r == p1}).unwrap();
+        }
+        let i2;
+        if !self.vertices.contains(&p2) {
+            i2 = self.vertices.len();
+            self.vertices.push(p2);
+        } else {
+            i2 = self.vertices.iter().position(|&r| { r == p2}).unwrap();
+        }
+
         line_vertices.push(i1);
-        let i2 = self.vertices.len();
-        self.vertices.push(Vertex{ p: p2 });
         line_vertices.push(i2);
 
         let mut add_lines = Vec::new();
 
         // Split all existing lines
         for l in self.lines.iter_mut() {
+            break;
             let v1 = &self.vertices[l.i1];
             let v2 = &self.vertices[l.i2];
-            if let Some(p) = intersect_lines(p1, p2, v1.p, v2.p) {
+            if let Some(p) = intersect_lines(p1, p2, *v1, *v2) {
 
                 let x1 = self.vertices.len();
-                self.vertices.push(Vertex {p});
+                self.vertices.push(p);
                 line_vertices.push(x1);
 
                 // Resize the current line to the split
@@ -110,7 +122,7 @@ impl WorldGen {
             let v1 = &self.vertices[*a];
             let v2 = &self.vertices[*b];
 
-            if v1.p.x > v2.p.x {
+            if v1.x > v2.x {
                 Ordering::Greater
             } else {
                 Ordering::Less
@@ -130,7 +142,15 @@ impl WorldGen {
     pub fn convert(&self) -> Vec<Box<dyn Parseable>> {
         let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
 
-        let mut drawn = Vec::new();
+        println!("Vertices: {:?}", self.vertices.len());
+        println!("Lines: {:?}", self.lines.len());
+
+        // for l in self.lines.iter() {
+        //     objects.push(Box::new(Line {
+        //         p1: self.vertices[l.i1],
+        //         p2: self.vertices[l.i2],
+        //     }));
+        // }
 
         for i in 0..self.vertices.len() {
 
@@ -143,60 +163,74 @@ impl WorldGen {
                 if line.i2 == i { joins.push(line.i1) }
             }
 
-            println!("{}", joins.len());
-
             // Draw all vertices
-            //objects.push(Box::new(Point {
-             //   p1: self.vertices[i].p,
-            //}));
+            // objects.push(Box::new(Point {
+            //    p1: self.vertices[i],
+            // }));
 
             // Draw all for now
             match joins.len() {
-                1 => {
-                    objects.push(Box::new(Line {
-                        p1: self.vertices[joins[0]].p,
-                        p2: self.vertices[i].p,
-                    }));
-                },
-                4 => {
-                    let p1 = self.vertices[joins[0]].p;
-                    let p2 = self.vertices[joins[1]].p;
-                    let v= self.vertices[i].p;
+                2 => {
+                    let p1 = self.vertices[joins[0]];
+                    let p2 = self.vertices[joins[1]];
+                    let v= self.vertices[i];
+
                     let r1 = (p1.y - v.y) / (v.x - p1.x);
                     let r2 = (p2.y - v.y) / (v.x - p2.x);
 
-                    // if j0 and j1 are in line
-                    if f64::abs(r1 - r2) < 0.1 {
+
+                    // if j0 and j1 are not continuous
+                    if f64::abs(r1 - r2) > 0.01 {
                         // Case 1
                         objects.push(Box::new(Exx{
-                            p1: self.vertices[joins[0]].p,
-                            p2: self.vertices[i].p,
-                            p3: self.vertices[joins[2]].p,
+                            p1: self.vertices[joins[0]],
+                            p2: self.vertices[i],
+                            p3: self.vertices[joins[1]],
                         }));
+                    }
+                },
+                3 => {
+                    let p1 = self.vertices[joins[0]];
+                    let p2 = self.vertices[joins[1]];
+                    let p3 = self.vertices[joins[2]];
+                    let v= self.vertices[i];
+
+                    let r1 = (p1.y - v.y) / (v.x - p1.x);
+                    let r2 = (p2.y - v.y) / (v.x - p2.x);
+                    let r3 = (p3.y - v.y) / (v.x - p3.x);
+
+                    // if j0 and j1 are not continuous
+                    if f64::abs(r1 - r2) > 0.01 {
+                        // Case 1
                         objects.push(Box::new(Exx{
-                            p1: self.vertices[joins[1]].p,
-                            p2: self.vertices[i].p,
-                            p3: self.vertices[joins[3]].p,
+                            p1: p1,
+                            p2: v,
+                            p3: p2,
                         }));
-                    } else {
+                    }
+
+                    // if j0 and j1 are not continuous
+                    if f64::abs(r1 - r3) > 0.01 {
                         // Case 2
                         objects.push(Box::new(Exx{
-                            p1: self.vertices[joins[0]].p,
-                            p2: self.vertices[i].p,
-                            p3: self.vertices[joins[1]].p,
+                            p1: p1,
+                            p2: v,
+                            p3: p3,
                         }));
+                    }
+
+                    // if j0 and j1 are not continuous
+                    if f64::abs(r2 - r3) > 0.01 {
+                        // Case 3
                         objects.push(Box::new(Exx{
-                            p1: self.vertices[joins[2]].p,
-                            p2: self.vertices[i].p,
-                            p3: self.vertices[joins[3]].p,
+                            p1: p2,
+                            p2: v,
+                            p3: p3,
                         }));
                     }
                 },
                 _ => {}
             }
-
-            drawn.append(&mut joins);
-
         }
         objects
     }

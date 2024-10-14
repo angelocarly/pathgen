@@ -1,5 +1,8 @@
+use std::fmt::format;
 use glam::{DVec2};
-use vsvg::{DocumentTrait};
+use rand::random;
+use vsvg::{DocumentTrait, PathTrait};
+use vsvg::exports::usvg::Node::Path;
 use crate::export::parser::Parseable;
 
 pub struct Exx {
@@ -11,18 +14,20 @@ pub struct Exx {
 impl Parseable for Exx {
     fn parse(&self, doc: &mut vsvg::Document) {
 
+        if self.p2 == self.p3 || self.p1 == self.p2 { return; }
+
         // Normals from p2 out
         let n1 = (self.p2 - self.p1).normalize();
         let n2 = (self.p2 - self.p3).normalize();
 
-        doc.push_path(1, vec![
-            (self.p1.x, self.p1.y),
-            (self.p2.x, self.p2.y),
-            (self.p3.x, self.p3.y),
-        ]);
+        // doc.push_path(1, vec![
+        //     (self.p1.x, self.p1.y),
+        //     (self.p2.x, self.p2.y),
+        //     (self.p3.x, self.p3.y),
+        // ]);
 
-        let len = 90.;
-        let iterations = 20;
+        let len = 50.;
+        let iterations = 7;
         for i in 0..iterations {
 
             let offset = len * (i as f64 / iterations as f64);
@@ -60,10 +65,14 @@ pub struct Line {
 
 impl Parseable for Line {
     fn parse(&self, doc: &mut vsvg::Document) {
-        doc.push_path(1, vec![
-            (self.p1.x, self.p1.y),
-            (self.p2.x, self.p2.y),
-        ]);
+        let mut path = vsvg::Path::from_svg(format!(
+            "M {} {} L {} {}",
+            self.p1.x, self.p1.y,
+            self.p2.x, self.p2.y
+        ).as_str()).unwrap();
+
+        path.metadata_mut().color = vsvg::Color::new(random::<u8>(), random::<u8>(), random::<u8>(), 255);
+        doc.push_path(1, path );
     }
 }
 
