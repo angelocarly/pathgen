@@ -26,15 +26,15 @@ impl Parseable for Exx {
         //     (self.p3.x, self.p3.y),
         // ]);
 
-        let len = 50.;
-        let iterations = 7;
+        let iterations = 4;
         for i in 0..iterations {
 
-            let offset = len * (i as f64 / iterations as f64);
-            let l1 = f64::min((self.p2 - self.p1).length(), offset);
+            let ratio = 0.5 * (i as f64 / iterations as f64);
+
+            let l1 = (self.p2 - self.p1).length() * ratio;
             let q1 = self.p2 - n1 * l1;
 
-            let l2 = f64::min((self.p2 - self.p3).length(), offset);
+            let l2 = (self.p2 - self.p3).length() * ratio;
             let q2 = self.p2 - n2 * l2;
 
             if l1 == (self.p2 - self.p1).length() && l2 == (self.p2 - self.p3).length() {
