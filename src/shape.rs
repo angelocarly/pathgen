@@ -1,8 +1,6 @@
-use std::fmt::format;
 use glam::{DVec2};
 use rand::random;
 use vsvg::{DocumentTrait, PathTrait};
-use vsvg::exports::usvg::Node::Path;
 use crate::export::parser::Parseable;
 
 pub struct Exx {

@@ -1,4 +1,4 @@
-use vsvg::{DocumentTrait, LayerTrait, PageSize, Unit};
+use vsvg::{DocumentTrait, LayerTrait, PageSize};
 
 pub trait Parseable {
     fn parse(&self, doc: &mut vsvg::Document);

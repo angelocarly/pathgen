@@ -45,11 +45,6 @@ pub struct WorldGen {
     lines: Vec< VLine >
 }
 
-#[derive(Debug)]
-pub struct Vertex {
-    pub p: DVec2
-}
-
 #[derive(PartialEq, Debug)]
 pub struct VLine {
     pub i1: usize,
@@ -67,7 +62,7 @@ impl WorldGen {
     }
 
     pub fn add_line(&mut self, p1: DVec2, p2: DVec2) -> bool {
-        let mut intersect = false;
+        let intersect = false;
         let mut line_vertices = Vec::new();
 
         let i1;
@@ -92,26 +87,25 @@ impl WorldGen {
 
         // Split all existing lines
         for l in self.lines.iter_mut() {
-            break;
-            let v1 = &self.vertices[l.i1];
-            let v2 = &self.vertices[l.i2];
-            if let Some(p) = intersect_lines(p1, p2, *v1, *v2) {
-
-                let x1 = self.vertices.len();
-                self.vertices.push(p);
-                line_vertices.push(x1);
-
-                // Resize the current line to the split
-                let end = l.i2;
-                l.i2 = x1;
-
-                add_lines.push(VLine {
-                    i1: x1,
-                    i2: end,
-                });
-
-                intersect = true
-            }
+            // let v1 = &self.vertices[l.i1];
+            // let v2 = &self.vertices[l.i2];
+            // if let Some(p) = intersect_lines(p1, p2, *v1, *v2) {
+            //
+            //     let x1 = self.vertices.len();
+            //     self.vertices.push(p);
+            //     line_vertices.push(x1);
+            //
+            //     // Resize the current line to the split
+            //     let end = l.i2;
+            //     l.i2 = x1;
+            //
+            //     add_lines.push(VLine {
+            //         i1: x1,
+            //         i2: end,
+            //     });
+            //
+            //     intersect = true
+            // }
         }
 
         // Add the new lines to the lines
