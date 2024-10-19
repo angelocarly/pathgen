@@ -3,6 +3,13 @@ mod export;
 mod world;
 
 use std::ops::Mul;
+use ash::vk;
+use ash::vk::{ImageAspectFlags, ImageLayout};
+use cen::app::App;
+use cen::app::app::AppConfig;
+use cen::graphics::Renderer;
+use cen::graphics::renderer::RenderComponent;
+use cen::vulkan::CommandBuffer;
 use crate::export::parser::{Parser};
 use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Mat4};
 use rand::random;
@@ -84,6 +91,57 @@ fn transform(p: DVec3) -> DVec2 {
     DVec2::new(q.x, q.y) / q.w
 }
 
+struct Rend {
+
+}
+
+impl RenderComponent for Rend {
+    fn render(&self, renderer: &mut Renderer, command_buffer: &mut CommandBuffer, swapchain_image: &vk::Image) {
+
+        // Transition the swapchain image
+        renderer.transition_image(
+            &command_buffer,
+            &swapchain_image,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::AccessFlags::NONE,
+            vk::AccessFlags::TRANSFER_WRITE
+        );
+
+        unsafe {
+            renderer.device.handle().cmd_clear_color_image(
+                command_buffer.handle(),
+                *swapchain_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &vk::ClearColorValue {
+                    float32: [0.0, 1.0, 0.0, 1.0]
+                },
+                &[vk::ImageSubresourceRange {
+                    aspect_mask: ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                }]
+            );
+        }
+
+        // Transfer back to default states
+        renderer.transition_image(
+            &command_buffer,
+            &swapchain_image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            vk::AccessFlags::TRANSFER_WRITE,
+            vk::AccessFlags::NONE
+        );
+    }
+}
+
 fn main() {
     let page_size = PageSize::Custom(100., 100., Unit::Mm);
 
@@ -105,6 +163,14 @@ fn main() {
     }
 
     let objects = world.convert();
+
+    let app = App::new(AppConfig {
+        width: 1000,
+        height: 1000,
+        vsync: true,
+        log_fps: false,
+    });
+    app.run(Box::new(Rend{}));
 
     Parser::parse(&objects, page_size);
 }
