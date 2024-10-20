@@ -4,7 +4,7 @@ mod world;
 
 use std::ops::Mul;
 use ash::vk;
-use ash::vk::{ImageAspectFlags, ImageSubresourceLayers, Offset3D};
+use ash::vk::{ImageAspectFlags, ImageSubresourceLayers, Offset3D, WriteDescriptorSet};
 use cen::app::App;
 use cen::app::app::AppConfig;
 use cen::graphics::pipeline_store::{PipelineConfig, PipelineKey};
@@ -92,7 +92,7 @@ fn transform(p: DVec3) -> DVec2 {
 }
 
 struct Rend {
-    _layout: DescriptorSetLayout,
+    descriptorset: DescriptorSetLayout,
     pipeline: PipelineKey,
     image: Image,
 }
@@ -124,9 +124,19 @@ impl Rend {
                 .binding(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE ),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(1)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE ),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(2)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::COMPUTE )
         ];
-        let layout = DescriptorSetLayout::new_push_descriptor(
+        let descriptorset = DescriptorSetLayout::new_push_descriptor(
             &renderer.device,
             layout_bindings
         );
@@ -134,14 +144,16 @@ impl Rend {
         // Pipeline
         let pipeline = renderer.pipeline_store().insert(PipelineConfig {
             shader_path: "shaders/lines.comp".into(),
-            descriptor_set_layouts: vec![layout.clone()],
+            descriptor_set_layouts: vec![
+                descriptorset.clone(),
+            ],
             push_constant_ranges: vec![],
             macros: Default::default(),
         }).expect("Failed to create pipeline");
 
         Self {
             image,
-            _layout: layout,
+            descriptorset,
             pipeline
         }
     }
@@ -153,9 +165,19 @@ impl RenderComponent for Rend {
         // Render
         let compute = renderer.pipeline_store().get(self.pipeline).unwrap();
         command_buffer.bind_pipeline(&compute);
-        command_buffer.bind_push_descriptor_image(
+
+        let bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
+
+        let write_descriptor_set = WriteDescriptorSet::default()
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .image_info(&bindings);
+
+        command_buffer.bind_push_descriptor(
             &compute,
-            &self.image
+            0,
+            &[write_descriptor_set]
         );
         command_buffer.dispatch(500, 500, 1 );
 
