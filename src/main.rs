@@ -4,15 +4,16 @@ mod world;
 
 use std::ops::Mul;
 use ash::vk;
-use ash::vk::{ImageAspectFlags, ImageSubresourceLayers, Offset3D, WriteDescriptorSet};
+use ash::vk::{BufferUsageFlags, ImageAspectFlags, ImageSubresourceLayers, Offset3D, WriteDescriptorSet};
 use cen::app::App;
 use cen::app::app::AppConfig;
 use cen::graphics::pipeline_store::{PipelineConfig, PipelineKey};
 use cen::graphics::Renderer;
 use cen::graphics::renderer::RenderComponent;
-use cen::vulkan::{CommandBuffer, DescriptorSetLayout, Image};
+use cen::vulkan::{Buffer, CommandBuffer, DescriptorSetLayout, Image};
 use crate::export::parser::{Parser};
-use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot};
+use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Vec2};
+use gpu_allocator::MemoryLocation;
 use vsvg::{PageSize, Unit};
 use crate::world::{WorldGen};
 
@@ -86,7 +87,7 @@ fn gen_mesh() -> (Vec<DVec3>, Vec<(usize, usize)>) {
 fn transform(p: DVec3) -> DVec2 {
     let model = DMat4::from_euler(EulerRot::XYZ, 0.5, 0.3, 0.3);
     let view = DMat4::look_at_rh(DVec3::new(1.0, 0.5, 1.0) * 1.3, DVec3::new(0., 0., 0.), DVec3::new(0., 1., 0.));
-    let proj = DMat4::perspective_lh(70., 1., 0.001, 500.);
+    let proj = DMat4::perspective_lh(1.3f64, 1., 0.001, 500.);
     let q = proj.mul(view).mul(model).mul(DVec4::new(p.x, p.y, p.z, 1.));
     DVec2::new(q.x, q.y) / q.w
 }
@@ -95,6 +96,8 @@ struct Rend {
     descriptorset: DescriptorSetLayout,
     pipeline: PipelineKey,
     image: Image,
+    vertex_buffer: Buffer,
+    index_buffer: Buffer,
 }
 
 impl Rend {
@@ -117,6 +120,22 @@ impl Rend {
         }
         image_command_buffer.end();
         renderer.device.submit_single_time_command(renderer.queue, &image_command_buffer);
+
+        let mut vertex_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            100 * 4,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
+
+        let index_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            100 * 4,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
 
         // Layout
         let layout_bindings = &[
@@ -153,8 +172,28 @@ impl Rend {
 
         Self {
             image,
+            vertex_buffer,
+            index_buffer,
             descriptorset,
             pipeline
+        }
+    }
+
+    pub fn update_mesh(&mut self) {
+
+        let mesh = gen_mesh();
+
+        let (_, vert_mem, _) = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec2>() };
+        for i in 0..mesh.0.len() {
+            let v = transform(mesh.0[i]);
+            vert_mem[ i ] = Vec2::new(v.x as f32, v.y as f32);
+        }
+
+
+        let (_, index_mem, _) = unsafe { self.index_buffer.mapped().align_to_mut::<i32>() };
+        for i in 0..mesh.1.len() {
+            index_mem[ i * 2 + 0 ] = mesh.1[i].0 as i32;
+            index_mem[ i * 2 + 1 ] = mesh.1[i].1 as i32;
         }
     }
 }
@@ -166,18 +205,31 @@ impl RenderComponent for Rend {
         let compute = renderer.pipeline_store().get(self.pipeline).unwrap();
         command_buffer.bind_pipeline(&compute);
 
-        let bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
-
-        let write_descriptor_set = WriteDescriptorSet::default()
+        let image_bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
+        let image_write_descriptor_set = WriteDescriptorSet::default()
             .dst_binding(0)
             .dst_array_element(0)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .image_info(&bindings);
+            .image_info(&image_bindings);
+
+        let index_bindings = [self.index_buffer.binding()];
+        let index_write_descriptor_set = WriteDescriptorSet::default()
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(&index_bindings);
+
+        let vertex_bindings = [self.vertex_buffer.binding()];
+        let vertex_write_descriptor_set = WriteDescriptorSet::default()
+            .dst_binding(2)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(&vertex_bindings);
 
         command_buffer.bind_push_descriptor(
             &compute,
             0,
-            &[write_descriptor_set]
+            &[image_write_descriptor_set, index_write_descriptor_set, vertex_write_descriptor_set]
         );
         command_buffer.dispatch(500, 500, 1 );
 
@@ -315,7 +367,8 @@ fn main() {
         log_fps: false,
     });
 
-    let rend = Rend::new(app.renderer());
+    let mut rend = Rend::new(app.renderer());
+    rend.update_mesh();
 
     app.run(Box::new(rend));
 

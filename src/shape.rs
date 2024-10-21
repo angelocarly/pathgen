@@ -39,7 +39,7 @@ impl Parseable for Exx {
                 break;
             }
 
-            println!("Adding path ({},{}) ({},{}) ({},{})", q1.x, q1.y, self.p2.x, self.p2.y, q2.x, q2.y);
+            // println!("Adding path ({},{}) ({},{}) ({},{})", q1.x, q1.y, self.p2.x, self.p2.y, q2.x, q2.y);
 
             let path = vsvg::Path::from_svg(
                 format!(
