@@ -1,11 +1,14 @@
 mod shape;
 mod export;
 mod world;
+mod mesh;
 
+use std::collections::HashSet;
+use std::fs;
 use std::ops::Mul;
 use std::time::Instant;
 use ash::vk;
-use ash::vk::{BufferUsageFlags, ImageAspectFlags, ImageSubresourceLayers, Offset3D, PushConstantRange, ShaderStageFlags, WriteDescriptorSet};
+use ash::vk::{BufferUsageFlags, DeviceSize, ImageAspectFlags, ImageSubresourceLayers, Offset3D, PushConstantRange, ShaderStageFlags, WriteDescriptorSet};
 use bytemuck::{Pod, Zeroable};
 use cen::app::App;
 use cen::app::app::AppConfig;
@@ -17,74 +20,8 @@ use crate::export::parser::{Parseable, Parser};
 use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Mat4, Vec2, Vec3, Vec4};
 use gpu_allocator::MemoryLocation;
 use vsvg::{PageSize, Unit};
+use crate::mesh::gen_dodecahedron;
 use crate::shape::Line;
-
-fn gen_mesh() -> (Vec<DVec3>, Vec<(usize, usize)>) {
-
-    let phi = (1. + f64::sqrt(5.) ) / 2.;
-
-    let a = 0.5;
-    let b = 0.5 * 1. / phi;
-    let c = 0.5 * (2. - phi);
-
-    let vertices: Vec<DVec3> = vec![
-        DVec3::new( c, 0.,  a),
-        DVec3::new(-c,  0.,  a),
-        DVec3::new(-b,  b,  b),
-        DVec3::new( 0.,  a,  c),
-        DVec3::new( b,  b,  b),
-        DVec3::new( b, -b,  b),
-        DVec3::new( 0., -a,  c),
-        DVec3::new(-b, -b,  b),
-        DVec3::new( c,  0., -a),
-        DVec3::new(-c,  0., -a),
-        DVec3::new(-b, -b, -b),
-        DVec3::new( 0., -a, -c),
-        DVec3::new( b, -b, -b),
-        DVec3::new( b,  b, -b),
-        DVec3::new( 0.,  a, -c),
-        DVec3::new(-b,  b, -b),
-        DVec3::new( a,  c,  0.),
-        DVec3::new(-a,  c,  0.),
-        DVec3::new(-a, -c,  0.),
-        DVec3::new( a, -c,  0.)
-    ];
-
-    let lines: Vec<(usize,usize)> = vec![
-        (  0,  1 ),
-        (  0,  4 ),
-        (  0,  5 ),
-        (  1,  2 ),
-        (  1,  7 ),
-        (  2,  3 ),
-        (  2, 17 ),
-        (  3,  4 ),
-        (  3, 14 ),
-        (  4, 16 ),
-        (  5,  6 ),
-        (  5, 19 ),
-        (  6,  7 ),
-        (  6, 11 ),
-        (  7, 18 ),
-        (  8,  9 ),
-        (  8, 12 ),
-        (  8, 13 ),
-        (  9, 10 ),
-        (  9, 15 ),
-        ( 10, 11 ),
-        ( 10, 18 ),
-        ( 11, 12 ),
-        ( 12, 19 ),
-        ( 13, 14 ),
-        ( 13, 16 ),
-        ( 14, 15 ),
-        ( 15, 17 ),
-        ( 16, 19 ),
-        ( 17, 18 )
-    ];
-
-    (vertices, lines)
-}
 
 struct Rend {
     descriptorset: DescriptorSetLayout,
@@ -96,7 +33,8 @@ struct Rend {
 }
 
 struct PushConstants {
-    transform: Mat4
+    transform: Mat4,
+    edge_count: i32
 }
 
 impl Rend {
@@ -120,21 +58,7 @@ impl Rend {
         image_command_buffer.end();
         renderer.device.submit_single_time_command(renderer.queue, &image_command_buffer);
 
-        let mut vertex_buffer = Buffer::new(
-            &renderer.device,
-            &mut renderer.allocator,
-            MemoryLocation::CpuToGpu,
-            100 * 4,
-            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
-        );
-
-        let index_buffer = Buffer::new(
-            &renderer.device,
-            &mut renderer.allocator,
-            MemoryLocation::CpuToGpu,
-            100 * 4,
-            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
-        );
+        let (vertex_buffer, index_buffer ) = Self::load_mesh(renderer);
 
         // Layout
         let layout_bindings = &[
@@ -189,27 +113,65 @@ impl Rend {
         let current_time = self.start_time.elapsed().as_secs_f32();
         let model = Mat4::from_euler(EulerRot::XYZ, 0.1 * current_time, 0.03 * current_time, 0.);
         let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 1.0) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
-        let proj = Mat4::perspective_lh(1.8f32, 1., 0.001, 500.);
+        let proj = Mat4::perspective_lh(1.2f32, 1., 0.001, 500.);
         proj.mul(view).mul(model)
     }
 
 
-    pub fn update_mesh(&mut self) {
+    pub fn load_mesh(renderer: &mut Renderer) -> (Buffer, Buffer) {
 
-        let mesh = gen_mesh();
+        let off_file: String = fs::read_to_string("Pentagonal_hexecontahedron.off").unwrap();
+        let mesh = off_rs::parse(
+            off_file.as_str(),
+            Default::default()
+        ).expect("Failed to parse off file");
 
-        let (_, vert_mem, _) = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec4>() };
-        for i in 0..mesh.0.len() {
-            let v = mesh.0[i];
-            vert_mem[ i ] = Vec4::new(v.x as f32, v.y as f32, v.z as f32, 0.);
+        let mut vertex_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            (mesh.vertices.len() * size_of::<Vec4>()) as DeviceSize,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
+
+        let mut edges: HashSet<(u32, u32)> = HashSet::new();
+        mesh.faces.iter().for_each(|f| {
+            for a in 0..f.vertices.len() {
+                let mut i1 = f.vertices[a] as u32;
+                let mut i2 = f.vertices[ (a + 1) % f.vertices.len() ] as u32;
+                if i2 < i1 {
+                    let q = i1;
+                    i1 = i2;
+                    i2 = q;
+                }
+                edges.insert((i1, i2) );
+            }
+        });
+
+        let mut index_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            (edges.len() * 2 * size_of::<u32>()) as DeviceSize,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
+
+        let (_, vert_mem, _) = unsafe { vertex_buffer.mapped().align_to_mut::<Vec4>() };
+        for i in 0..mesh.vertices.len() {
+            let v = mesh.vertices[i].position;
+            vert_mem[ i ] = Vec4::new(v.x, v.y, v.z, 0.).mul( 0.1 );
         }
 
-
-        let (_, index_mem, _) = unsafe { self.index_buffer.mapped().align_to_mut::<i32>() };
-        for i in 0..mesh.1.len() {
-            index_mem[ i * 2 + 0 ] = mesh.1[i].0 as i32;
-            index_mem[ i * 2 + 1 ] = mesh.1[i].1 as i32;
+        let (_, index_mem, _) = unsafe { index_buffer.mapped().align_to_mut::<u32>() };
+        let mut i: usize = 0;
+        for edge in edges {
+                index_mem[ i ] = edge.0;
+                i += 1;
+                index_mem[ i ] = edge.1;
+                i += 1;
         }
+
+        (vertex_buffer, index_buffer)
     }
 
     pub fn export(&mut self) -> (Vec<i32>, Vec<Vec4>) {
@@ -254,8 +216,10 @@ impl RenderComponent for Rend {
             &[image_write_descriptor_set, index_write_descriptor_set, vertex_write_descriptor_set]
         );
 
+        let edge_count = (self.index_buffer.size as f32 / size_of::<u32>() as f32 / 2.0 ) as i32;
         let push_constants = PushConstants {
-            transform: self.transform()
+            transform: self.transform(),
+             edge_count
         };
 
         command_buffer.push_constants(
@@ -379,11 +343,10 @@ fn main() {
         width: 1000,
         height: 1000,
         vsync: true,
-        log_fps: false,
+        log_fps: true,
     });
 
     let mut rend = Rend::new(app.renderer());
-    rend.update_mesh();
 
     app.run(&rend);
 

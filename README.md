@@ -4,6 +4,8 @@ A project for generating svg generative art. To be used for plotters.
 
 Currently in experimental phase.
 
+[OFF-format](https://www.software3d.com/StellaManual.php?prod=stella4D#import)
+
 ## Running
 
 ```bash
