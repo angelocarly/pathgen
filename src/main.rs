@@ -3,19 +3,21 @@ mod export;
 mod world;
 
 use std::ops::Mul;
+use std::time::Instant;
 use ash::vk;
-use ash::vk::{BufferUsageFlags, ImageAspectFlags, ImageSubresourceLayers, Offset3D, WriteDescriptorSet};
+use ash::vk::{BufferUsageFlags, ImageAspectFlags, ImageSubresourceLayers, Offset3D, PushConstantRange, ShaderStageFlags, WriteDescriptorSet};
+use bytemuck::{Pod, Zeroable};
 use cen::app::App;
 use cen::app::app::AppConfig;
 use cen::graphics::pipeline_store::{PipelineConfig, PipelineKey};
 use cen::graphics::Renderer;
 use cen::graphics::renderer::RenderComponent;
 use cen::vulkan::{Buffer, CommandBuffer, DescriptorSetLayout, Image};
-use crate::export::parser::{Parser};
-use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Vec2};
+use crate::export::parser::{Parseable, Parser};
+use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Mat4, Vec2, Vec3, Vec4};
 use gpu_allocator::MemoryLocation;
 use vsvg::{PageSize, Unit};
-use crate::world::{WorldGen};
+use crate::shape::Line;
 
 fn gen_mesh() -> (Vec<DVec3>, Vec<(usize, usize)>) {
 
@@ -84,20 +86,17 @@ fn gen_mesh() -> (Vec<DVec3>, Vec<(usize, usize)>) {
     (vertices, lines)
 }
 
-fn transform(p: DVec3) -> DVec2 {
-    let model = DMat4::from_euler(EulerRot::XYZ, 0.5, 0.3, 0.3);
-    let view = DMat4::look_at_rh(DVec3::new(1.0, 0.5, 1.0) * 1.3, DVec3::new(0., 0., 0.), DVec3::new(0., 1., 0.));
-    let proj = DMat4::perspective_lh(1.3f64, 1., 0.001, 500.);
-    let q = proj.mul(view).mul(model).mul(DVec4::new(p.x, p.y, p.z, 1.));
-    DVec2::new(q.x, q.y) / q.w
-}
-
 struct Rend {
     descriptorset: DescriptorSetLayout,
     pipeline: PipelineKey,
     image: Image,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
+    start_time: Instant,
+}
+
+struct PushConstants {
+    transform: Mat4
 }
 
 impl Rend {
@@ -159,6 +158,12 @@ impl Rend {
             &renderer.device,
             layout_bindings
         );
+        let push_constants = vec![
+            PushConstantRange::default()
+                .offset(0)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE)
+                .size(size_of::<PushConstants>() as u32)
+        ];
 
         // Pipeline
         let pipeline = renderer.pipeline_store().insert(PipelineConfig {
@@ -166,7 +171,7 @@ impl Rend {
             descriptor_set_layouts: vec![
                 descriptorset.clone(),
             ],
-            push_constant_ranges: vec![],
+            push_constant_ranges: push_constants,
             macros: Default::default(),
         }).expect("Failed to create pipeline");
 
@@ -175,18 +180,28 @@ impl Rend {
             vertex_buffer,
             index_buffer,
             descriptorset,
-            pipeline
+            pipeline,
+            start_time: Instant::now()
         }
     }
+
+    pub fn transform(&self) -> Mat4 {
+        let current_time = self.start_time.elapsed().as_secs_f32();
+        let model = Mat4::from_euler(EulerRot::XYZ, 0.1 * current_time, 0.03 * current_time, 0.);
+        let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 1.0) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
+        let proj = Mat4::perspective_lh(1.8f32, 1., 0.001, 500.);
+        proj.mul(view).mul(model)
+    }
+
 
     pub fn update_mesh(&mut self) {
 
         let mesh = gen_mesh();
 
-        let (_, vert_mem, _) = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec2>() };
+        let (_, vert_mem, _) = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec4>() };
         for i in 0..mesh.0.len() {
-            let v = transform(mesh.0[i]);
-            vert_mem[ i ] = Vec2::new(v.x as f32, v.y as f32);
+            let v = mesh.0[i];
+            vert_mem[ i ] = Vec4::new(v.x as f32, v.y as f32, v.z as f32, 0.);
         }
 
 
@@ -195,6 +210,13 @@ impl Rend {
             index_mem[ i * 2 + 0 ] = mesh.1[i].0 as i32;
             index_mem[ i * 2 + 1 ] = mesh.1[i].1 as i32;
         }
+    }
+
+    pub fn export(&mut self) -> (Vec<i32>, Vec<Vec4>) {
+        let vertices: Vec<Vec4> = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec4>() }.1.into();
+        let indices: Vec<i32> = unsafe { self.index_buffer.mapped().align_to_mut::<i32>() }.1.into();
+
+        (indices, vertices)
     }
 }
 
@@ -231,6 +253,18 @@ impl RenderComponent for Rend {
             0,
             &[image_write_descriptor_set, index_write_descriptor_set, vertex_write_descriptor_set]
         );
+
+        let push_constants = PushConstants {
+            transform: self.transform()
+        };
+
+        command_buffer.push_constants(
+            &compute,
+            ShaderStageFlags::COMPUTE,
+            0,
+            &bytemuck::cast_slice(std::slice::from_ref(&push_constants.transform.to_cols_array()))
+        );
+
         command_buffer.dispatch(500, 500, 1 );
 
         // Transition the render to a source
@@ -339,27 +373,8 @@ impl RenderComponent for Rend {
 }
 
 fn main() {
-    let page_size = PageSize::Custom(100., 100., Unit::Mm);
 
-    let mut world = WorldGen::new();
-
-    let mesh = gen_mesh();
-
-    let scale = 300.;
-    let offset = DVec2::new(page_size.to_pixels().0, page_size.to_pixels().1) / 2.;
-
-    for l in mesh.1 {
-        let p1 = transform(mesh.0[l.0]);
-        let p2 = transform(mesh.0[l.1]);
-
-        world.add_line(
-            p1 * scale + offset,
-            p2 * scale + offset,
-        );
-    }
-
-    let objects = world.convert();
-
+    // Run the renderer
     let mut app = App::new(AppConfig {
         width: 1000,
         height: 1000,
@@ -370,7 +385,28 @@ fn main() {
     let mut rend = Rend::new(app.renderer());
     rend.update_mesh();
 
-    app.run(Box::new(rend));
+    app.run(&rend);
 
+    let trans = rend.transform();
+
+    let (indices, vertices) = rend.export();
+
+    // Export the data
+    let page_size = PageSize::Custom(100., 100., Unit::Mm);
+
+    let scale = 350.;
+    let offset = DVec2::new(page_size.to_pixels().0, page_size.to_pixels().1) / 2.;
+
+    let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
+    for i in 0..indices.len()/2 {
+        let p1 = trans.mul(Vec4::from(vertices[indices[i * 2 + 0] as usize]));
+        let p2 = trans.mul(Vec4::from(vertices[indices[i * 2 + 1] as usize]));
+        objects.push(Box::new(
+            Line {
+                p1: DVec2::new(p1.x as f64, p1.y as f64) * scale + offset,
+                p2: DVec2::new(p2.x as f64, p2.y as f64) * scale + offset,
+            }
+        ));
+    }
     Parser::parse(&objects, page_size);
 }

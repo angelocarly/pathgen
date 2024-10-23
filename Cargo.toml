@@ -10,3 +10,4 @@ vsvg = "0.5.0"
 cen = { git = "https://github.com/angelocarly/cen.git" }
 gpu-allocator = "0.27.0"
 ash = "0.38.0"
+bytemuck = "1.19.0"
