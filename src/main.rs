@@ -32,9 +32,14 @@ struct Rend {
     start_time: Instant,
 }
 
+#[derive(Pod, Zeroable, Debug)]
+#[repr(C)]
+#[derive(Copy)]
+#[derive(Clone)]
 struct PushConstants {
-    transform: Mat4,
-    edge_count: i32
+    transform: [f32; 16],
+    edge_count: i32,
+    time: f32,
 }
 
 impl Rend {
@@ -111,7 +116,7 @@ impl Rend {
 
     pub fn transform(&self) -> Mat4 {
         let current_time = self.start_time.elapsed().as_secs_f32();
-        let model = Mat4::from_euler(EulerRot::XYZ, 0.1 * current_time, 0.03 * current_time, 0.);
+        let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * current_time, 0.03 * current_time, 0.);
         let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 1.0) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
         let proj = Mat4::perspective_lh(1.2f32, 1., 0.001, 500.);
         proj.mul(view).mul(model)
@@ -120,7 +125,7 @@ impl Rend {
 
     pub fn load_mesh(renderer: &mut Renderer) -> (Buffer, Buffer) {
 
-        let off_file: String = fs::read_to_string("Pentagonal_hexecontahedron.off").unwrap();
+        let off_file: String = fs::read_to_string("Truncated_dodecahedron.off").unwrap();
         let mesh = off_rs::parse(
             off_file.as_str(),
             Default::default()
@@ -185,6 +190,48 @@ impl Rend {
 impl RenderComponent for Rend {
     fn render(&self, renderer: &mut Renderer, command_buffer: &mut CommandBuffer, swapchain_image: &vk::Image) {
 
+        // Transition the render to a source
+        renderer.transition_image(
+            &command_buffer,
+            &self.image.handle(),
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::AccessFlags::NONE,
+            vk::AccessFlags::TRANSFER_WRITE
+        );
+
+        unsafe {
+            renderer.device.handle().cmd_clear_color_image(
+                command_buffer.handle(),
+                *self.image.handle(),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0]
+                },
+                &[vk::ImageSubresourceRange {
+                    aspect_mask: ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                }]
+            );
+        }
+
+        // Transition the render to a source
+        renderer.transition_image(
+            &command_buffer,
+            &self.image.handle(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::AccessFlags::TRANSFER_WRITE,
+            vk::AccessFlags::SHADER_WRITE
+        );
+
         // Render
         let compute = renderer.pipeline_store().get(self.pipeline).unwrap();
         command_buffer.bind_pipeline(&compute);
@@ -217,16 +264,18 @@ impl RenderComponent for Rend {
         );
 
         let edge_count = (self.index_buffer.size as f32 / size_of::<u32>() as f32 / 2.0 ) as i32;
+        let time = Instant::now().duration_since(self.start_time).as_secs_f32();
         let push_constants = PushConstants {
-            transform: self.transform(),
-             edge_count
+            transform: self.transform().to_cols_array(),
+            edge_count,
+            time
         };
 
         command_buffer.push_constants(
             &compute,
             ShaderStageFlags::COMPUTE,
             0,
-            &bytemuck::cast_slice(std::slice::from_ref(&push_constants.transform.to_cols_array()))
+            &bytemuck::cast_slice(std::slice::from_ref(&push_constants))
         );
 
         command_buffer.dispatch(500, 500, 1 );
@@ -257,22 +306,6 @@ impl RenderComponent for Rend {
 
         // Copy to the swapchain
         unsafe {
-
-            renderer.device.handle().cmd_clear_color_image(
-                command_buffer.handle(),
-                *swapchain_image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0]
-                },
-                &[vk::ImageSubresourceRange {
-                    aspect_mask: ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                }]
-            );
 
             // Use a blit, as a copy doesn't synchronize properly to the swapchain on MoltenVK
             renderer.device.handle().cmd_blit_image(
@@ -342,7 +375,7 @@ fn main() {
     let mut app = App::new(AppConfig {
         width: 1000,
         height: 1000,
-        vsync: true,
+        vsync: false,
         log_fps: true,
     });
 
