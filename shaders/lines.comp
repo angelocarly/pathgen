@@ -14,6 +14,7 @@ layout( std430, binding = 2 ) buffer vertices
 layout( push_constant ) uniform PushConstants
 {
     mat4 transform;
+    vec4 color;
     int edge_count;
     float time;
 } constants;
@@ -82,7 +83,8 @@ void main()
     vec2 s1 = vec2( ( p1.x + .5f ) * screenSize.x, ( p1.y + .5f ) * screenSize.y);
     vec2 s2 = vec2( ( p2.x + .5f ) * screenSize.x, ( p2.y + .5f ) * screenSize.y);
 
-    dda_line(ivec2(s1), ivec2(s2), vec4( palette(p1.z, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3( 1.0, 1.0, 1.0),vec3(0.00, 0.33, 0.67)), 1));
+    //vec4( palette(p1.z, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3( 1.0, 1.0, 1.0),vec3(0.00, 0.33, 0.67)), 1)
+    dda_line(ivec2(s1), ivec2(s2), constants.color);
 //
 //    vec2 pos = vec2( float( p.x ) / float( screenSize.x ), float( p.y ) / float( screenSize.y ) ) - 0.5f;
 //

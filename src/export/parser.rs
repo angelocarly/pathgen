@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use vsvg::{DocumentTrait, LayerTrait, PageSize};
 
 pub trait Parseable {
@@ -9,7 +10,7 @@ pub struct Parser {
 
 impl Parser {
 
-    pub fn parse(paths: &[Box<dyn Parseable>], page_size: PageSize) {
+    pub fn parse(paths: &[Box<dyn Parseable>], page_size: PageSize, path: PathBuf) {
 
         let mut doc = vsvg::Document::new_with_page_size(page_size);
 
@@ -22,6 +23,6 @@ impl Parser {
         };
 
         // save to SVG
-        doc.to_svg_file("target/path.svg").unwrap();
+        doc.to_svg_file(path).unwrap();
     }
 }

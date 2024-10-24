@@ -6,6 +6,7 @@ mod mesh;
 use std::collections::HashSet;
 use std::fs;
 use std::ops::Mul;
+use std::path::PathBuf;
 use std::time::Instant;
 use ash::vk;
 use ash::vk::{BufferUsageFlags, DeviceSize, ImageAspectFlags, ImageSubresourceLayers, Offset3D, PushConstantRange, ShaderStageFlags, WriteDescriptorSet};
@@ -17,18 +18,22 @@ use cen::graphics::Renderer;
 use cen::graphics::renderer::RenderComponent;
 use cen::vulkan::{Buffer, CommandBuffer, DescriptorSetLayout, Image};
 use crate::export::parser::{Parseable, Parser};
-use glam::{DMat4, DVec2, DVec3, DVec4, EulerRot, Mat4, Vec2, Vec3, Vec4};
+use glam::{DVec2, EulerRot, Mat4, Vec3, Vec4};
 use gpu_allocator::MemoryLocation;
 use vsvg::{PageSize, Unit};
 use crate::mesh::gen_dodecahedron;
 use crate::shape::Line;
 
+struct Mesh {
+    vb: Buffer,
+    ib: Buffer,
+}
+
 struct Rend {
     descriptorset: DescriptorSetLayout,
     pipeline: PipelineKey,
     image: Image,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
+    meshes: Vec<Mesh>,
     start_time: Instant,
 }
 
@@ -38,6 +43,7 @@ struct Rend {
 #[derive(Clone)]
 struct PushConstants {
     transform: [f32; 16],
+    color: [f32; 4],
     edge_count: i32,
     time: f32,
 }
@@ -63,7 +69,11 @@ impl Rend {
         image_command_buffer.end();
         renderer.device.submit_single_time_command(renderer.queue, &image_command_buffer);
 
-        let (vertex_buffer, index_buffer ) = Self::load_mesh(renderer);
+        let meshes= vec![
+            Self::load_mesh(renderer, PathBuf::from("Dodecahedron.off")),
+            Self::load_mesh(renderer, PathBuf::from("Icosahedron.off")),
+            Self::load_mesh(renderer, PathBuf::from("Icosidodecahedron.off")),
+        ];
 
         // Layout
         let layout_bindings = &[
@@ -106,8 +116,7 @@ impl Rend {
 
         Self {
             image,
-            vertex_buffer,
-            index_buffer,
+            meshes,
             descriptorset,
             pipeline,
             start_time: Instant::now()
@@ -116,15 +125,15 @@ impl Rend {
 
     pub fn transform(&self, t: f32) -> Mat4 {
         let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * t, 0.03 * t, 0.);
-        let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 1.0) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
+        let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 0.5) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
         let proj = Mat4::perspective_lh(1.2f32, 1., 0.001, 500.);
         proj.mul(view).mul(model)
     }
 
 
-    pub fn load_mesh(renderer: &mut Renderer) -> (Buffer, Buffer) {
+    pub fn load_mesh(renderer: &mut Renderer, path: PathBuf) -> Mesh {
 
-        let off_file: String = fs::read_to_string("Truncated_dodecahedron.off").unwrap();
+        let off_file: String = fs::read_to_string(path).unwrap();
         let mesh = off_rs::parse(
             off_file.as_str(),
             Default::default()
@@ -175,14 +184,18 @@ impl Rend {
                 i += 1;
         }
 
-        (vertex_buffer, index_buffer)
+        Mesh {
+            vb: vertex_buffer,
+            ib: index_buffer,
+        }
     }
 
-    pub fn export(&mut self) -> (Vec<i32>, Vec<Vec4>) {
-        let vertices: Vec<Vec4> = unsafe { self.vertex_buffer.mapped().align_to_mut::<Vec4>() }.1.into();
-        let indices: Vec<i32> = unsafe { self.index_buffer.mapped().align_to_mut::<i32>() }.1.into();
-
-        (indices, vertices)
+    pub fn export(&mut self) -> Vec<(Vec<i32>, Vec<Vec4>)> {
+        self.meshes.iter_mut().map(|m| {
+            let vertices: Vec<Vec4> = unsafe { m.vb.mapped().align_to_mut::<Vec4>() }.1.into();
+            let indices: Vec<i32> = unsafe { m.ib.mapped().align_to_mut::<i32>() }.1.into();
+            (indices, vertices)
+        }).collect()
     }
 }
 
@@ -231,53 +244,66 @@ impl RenderComponent for Rend {
             vk::AccessFlags::SHADER_WRITE
         );
 
-        // Render
-        let compute = renderer.pipeline_store().get(self.pipeline).unwrap();
-        command_buffer.bind_pipeline(&compute);
+        let mut i = 0;
+        for m in &self.meshes {
+            let color = match i {
+                0 => Vec4::new(1.0, 0.0, 0.0, 1.0),
+                1 => Vec4::new(0.0, 1.0, 0.0, 1.0),
+                2 => Vec4::new(0.0, 0.0, 1.0, 1.0),
+                _ => Vec4::new(1.0, 1.0, 1.0, 1.0)
+            };
 
-        let image_bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
-        let image_write_descriptor_set = WriteDescriptorSet::default()
-            .dst_binding(0)
-            .dst_array_element(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .image_info(&image_bindings);
+            // Render
+            let compute = renderer.pipeline_store().get(self.pipeline).unwrap();
+            command_buffer.bind_pipeline(&compute);
 
-        let index_bindings = [self.index_buffer.binding()];
-        let index_write_descriptor_set = WriteDescriptorSet::default()
-            .dst_binding(1)
-            .dst_array_element(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&index_bindings);
+            let image_bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
+            let image_write_descriptor_set = WriteDescriptorSet::default()
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(&image_bindings);
 
-        let vertex_bindings = [self.vertex_buffer.binding()];
-        let vertex_write_descriptor_set = WriteDescriptorSet::default()
-            .dst_binding(2)
-            .dst_array_element(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&vertex_bindings);
+            let index_bindings = [m.ib.binding()];
+            let index_write_descriptor_set = WriteDescriptorSet::default()
+                .dst_binding(1)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&index_bindings);
 
-        command_buffer.bind_push_descriptor(
-            &compute,
-            0,
-            &[image_write_descriptor_set, index_write_descriptor_set, vertex_write_descriptor_set]
-        );
+            let vertex_bindings = [m.vb.binding()];
+            let vertex_write_descriptor_set = WriteDescriptorSet::default()
+                .dst_binding(2)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&vertex_bindings);
 
-        let edge_count = (self.index_buffer.size as f32 / size_of::<u32>() as f32 / 2.0 ) as i32;
-        let time = Instant::now().duration_since(self.start_time).as_secs_f32();
-        let push_constants = PushConstants {
-            transform: self.transform(time).to_cols_array(),
-            edge_count,
-            time
-        };
+            command_buffer.bind_push_descriptor(
+                &compute,
+                0,
+                &[image_write_descriptor_set, index_write_descriptor_set, vertex_write_descriptor_set]
+            );
 
-        command_buffer.push_constants(
-            &compute,
-            ShaderStageFlags::COMPUTE,
-            0,
-            &bytemuck::cast_slice(std::slice::from_ref(&push_constants))
-        );
+            let edge_count = (m.ib.size as f32 / size_of::<u32>() as f32 / 2.0 ) as i32;
+            let time = Instant::now().duration_since(self.start_time).as_secs_f32();
+            let push_constants = PushConstants {
+                transform: self.transform(time).to_cols_array(),
+                color: color.to_array(),
+                edge_count,
+                time
+            };
 
-        command_buffer.dispatch(500, 500, 1 );
+            command_buffer.push_constants(
+                &compute,
+                ShaderStageFlags::COMPUTE,
+                0,
+                &bytemuck::cast_slice(std::slice::from_ref(&push_constants))
+            );
+
+            command_buffer.dispatch(500, 500, 1 );
+
+            i += 1;
+        }
 
         // Transition the render to a source
         renderer.transition_image(
@@ -368,6 +394,27 @@ impl RenderComponent for Rend {
     }
 }
 
+fn export(indices: &Vec<i32>, vertices: &Vec<Vec4>, path: PathBuf, transform: Mat4) {
+    // Export the data
+    let page_size = PageSize::Custom(200., 200., Unit::Mm);
+
+    let scale = 1150.;
+    let offset = DVec2::new(page_size.to_pixels().0, page_size.to_pixels().1) / 2.;
+
+    let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
+    for i in 0..indices.len()/2 {
+        let p1 = transform.mul(Vec4::from(vertices[indices[i * 2 + 0] as usize]));
+        let p2 = transform.mul(Vec4::from(vertices[indices[i * 2 + 1] as usize]));
+        objects.push(Box::new(
+            Line {
+                p1: DVec2::new(p1.x as f64, p1.y as f64) * scale + offset,
+                p2: DVec2::new(p2.x as f64, p2.y as f64) * scale + offset,
+            }
+        ));
+    }
+    Parser::parse(&objects, page_size, path);
+}
+
 fn main() {
 
     // Run the renderer
@@ -385,24 +432,9 @@ fn main() {
     let time = Instant::now().duration_since(rend.start_time).as_secs_f32();
     let trans = rend.transform(time);
 
-    let (indices, vertices) = rend.export();
-
-    // Export the data
-    let page_size = PageSize::Custom(100., 100., Unit::Mm);
-
-    let scale = 350.;
-    let offset = DVec2::new(page_size.to_pixels().0, page_size.to_pixels().1) / 2.;
-
-    let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
-    for i in 0..indices.len()/2 {
-        let p1 = trans.mul(Vec4::from(vertices[indices[i * 2 + 0] as usize]));
-        let p2 = trans.mul(Vec4::from(vertices[indices[i * 2 + 1] as usize]));
-        objects.push(Box::new(
-            Line {
-                p1: DVec2::new(p1.x as f64, p1.y as f64) * scale + offset,
-                p2: DVec2::new(p2.x as f64, p2.y as f64) * scale + offset,
-            }
-        ));
-    }
-    Parser::parse(&objects, page_size);
+    let mut i = 0;
+    rend.export().iter().for_each(|m| {
+        export(&m.0, &m.1, PathBuf::from(format!("target/path{:?}.svg", i)), trans);
+        i += 1;
+    });
 }
