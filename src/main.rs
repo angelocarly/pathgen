@@ -114,9 +114,8 @@ impl Rend {
         }
     }
 
-    pub fn transform(&self) -> Mat4 {
-        let current_time = self.start_time.elapsed().as_secs_f32();
-        let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * current_time, 0.03 * current_time, 0.);
+    pub fn transform(&self, t: f32) -> Mat4 {
+        let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * t, 0.03 * t, 0.);
         let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 1.0) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
         let proj = Mat4::perspective_lh(1.2f32, 1., 0.001, 500.);
         proj.mul(view).mul(model)
@@ -266,7 +265,7 @@ impl RenderComponent for Rend {
         let edge_count = (self.index_buffer.size as f32 / size_of::<u32>() as f32 / 2.0 ) as i32;
         let time = Instant::now().duration_since(self.start_time).as_secs_f32();
         let push_constants = PushConstants {
-            transform: self.transform().to_cols_array(),
+            transform: self.transform(time).to_cols_array(),
             edge_count,
             time
         };
@@ -383,7 +382,8 @@ fn main() {
 
     app.run(&rend);
 
-    let trans = rend.transform();
+    let time = Instant::now().duration_since(rend.start_time).as_secs_f32();
+    let trans = rend.transform(time);
 
     let (indices, vertices) = rend.export();
 
