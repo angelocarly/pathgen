@@ -1,0 +1,33 @@
+#version 450
+
+layout ( local_size_x = 16, local_size_y = 16, local_size_z = 1 ) in;
+
+layout( binding = 0, rgba8 ) uniform image2D in_image;
+layout( binding = 1, rgba8 ) uniform image2D out_image;
+
+void main()
+{
+    ivec2 p = ivec2( gl_GlobalInvocationID.xy );
+    ivec2 screenSize = imageSize( in_image );
+
+    if( p.x >= screenSize.x || p.y >= screenSize.y ) return;
+
+    vec4 col = vec4( 0 );
+    int intensity_total = 0;
+
+    int range = 7;
+    for( int x = -range; x <= range; x++ )
+    {
+        for( int y = -range; y <= range; y++ )
+        {
+            int intensity = int( length( vec2( range, range ) ) - length( vec2( x, y ) ) );
+            intensity_total += intensity;
+            col += imageLoad( in_image, p + ivec2( x, y ) ) * intensity * 4;
+        }
+    }
+    col /= intensity_total;
+
+    col += imageLoad( in_image, p ) * 1.0;
+
+    imageStore( out_image, p, col );
+}

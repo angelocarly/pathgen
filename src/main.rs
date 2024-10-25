@@ -30,6 +30,7 @@ struct Mesh {
 }
 
 struct Rend {
+    bloom_pass: BloomPass,
     descriptorset: DescriptorSetLayout,
     pipeline: PipelineKey,
     image: Image,
@@ -46,6 +47,69 @@ struct PushConstants {
     color: [f32; 4],
     edge_count: i32,
     time: f32,
+}
+
+struct BloomPass {
+    pub pipeline: PipelineKey,
+    pub ds_layout: DescriptorSetLayout,
+    pub image: Image,
+}
+
+impl BloomPass {
+    fn new(renderer: &mut Renderer) -> BloomPass {
+
+        // Image
+        let image = Image::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            renderer.swapchain.get_extent().width,
+            renderer.swapchain.get_extent().height,
+            vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST
+        );
+
+        // Transition image
+        let mut image_command_buffer = CommandBuffer::new(&renderer.device, &renderer.command_pool);
+        image_command_buffer.begin();
+        {
+            renderer.transition_image(&image_command_buffer, image.handle(), vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::BOTTOM_OF_PIPE, vk::AccessFlags::empty(), vk::AccessFlags::empty());
+        }
+        image_command_buffer.end();
+        renderer.device.submit_single_time_command(renderer.queue, &image_command_buffer);
+
+        // Layout
+        let layout_bindings = &[
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE ),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(1)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE ),
+        ];
+        let ds_layout = DescriptorSetLayout::new_push_descriptor(
+            &renderer.device,
+            layout_bindings
+        );
+
+        // Pipeline
+        let pipeline = renderer.pipeline_store().insert(PipelineConfig {
+            shader_path: "shaders/bloom.comp".into(),
+            descriptor_set_layouts: vec![
+                ds_layout.clone(),
+            ],
+            push_constant_ranges: vec![],
+            macros: Default::default(),
+        }).expect("Failed to create pipeline");
+
+        BloomPass {
+            image,
+            ds_layout,
+            pipeline
+        }
+    }
 }
 
 impl Rend {
@@ -72,7 +136,7 @@ impl Rend {
         let meshes= vec![
             Self::load_mesh(renderer, PathBuf::from("Dodecahedron.off")),
             Self::load_mesh(renderer, PathBuf::from("Icosahedron.off")),
-            Self::load_mesh(renderer, PathBuf::from("Icosidodecahedron.off")),
+            // Self::load_mesh(renderer, PathBuf::from("Icosidodecahedron.off")),
         ];
 
         // Layout
@@ -114,19 +178,22 @@ impl Rend {
             macros: Default::default(),
         }).expect("Failed to create pipeline");
 
+        let bloom_pass = BloomPass::new(renderer);
+
         Self {
             image,
             meshes,
             descriptorset,
             pipeline,
-            start_time: Instant::now()
+            start_time: Instant::now(),
+            bloom_pass,
         }
     }
 
     pub fn transform(&self, t: f32) -> Mat4 {
         let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * t, 0.03 * t, 0.);
         let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 0.5) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
-        let proj = Mat4::perspective_lh(1.2f32, 1., 0.001, 500.);
+        let proj = Mat4::perspective_lh(0.8f32, 1., 0.001, 500.);
         proj.mul(view).mul(model)
     }
 
@@ -248,7 +315,7 @@ impl RenderComponent for Rend {
         for m in &self.meshes {
             let color = match i {
                 0 => Vec4::new(1.0, 0.0, 0.0, 1.0),
-                1 => Vec4::new(0.0, 1.0, 0.0, 1.0),
+                1 => Vec4::new(1.0, 1.0, 1.0, 1.0),
                 2 => Vec4::new(0.0, 0.0, 1.0, 1.0),
                 _ => Vec4::new(1.0, 1.0, 1.0, 1.0)
             };
@@ -305,10 +372,60 @@ impl RenderComponent for Rend {
             i += 1;
         }
 
+        // Transition the bloom to general
+        renderer.transition_image(
+            &command_buffer,
+            &self.bloom_pass.image.handle(),
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::AccessFlags::NONE,
+            vk::AccessFlags::SHADER_WRITE
+        );
+
+        // Bloom pass
+        let bloom = renderer.pipeline_store().get(self.bloom_pass.pipeline).unwrap();
+        command_buffer.bind_pipeline(&bloom);
+
+        let image_bindings = [self.image.binding(vk::ImageLayout::GENERAL)];
+        let image_write_descriptor_set = WriteDescriptorSet::default()
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .image_info(&image_bindings);
+
+        let image_bindings2 = [self.bloom_pass.image.binding(vk::ImageLayout::GENERAL)];
+        let image_write_descriptor_set2 = WriteDescriptorSet::default()
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .image_info(&image_bindings2);
+
+        command_buffer.bind_push_descriptor(
+            &bloom,
+            0,
+            &[image_write_descriptor_set, image_write_descriptor_set2]
+        );
+
+        command_buffer.dispatch(500, 500, 1 );
+
         // Transition the render to a source
         renderer.transition_image(
             &command_buffer,
             &self.image.handle(),
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::AccessFlags::SHADER_WRITE,
+            vk::AccessFlags::TRANSFER_READ
+        );
+
+        // Transition the out to a source
+        renderer.transition_image(
+            &command_buffer,
+            &self.bloom_pass.image.handle(),
             vk::ImageLayout::GENERAL,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             vk::PipelineStageFlags::COMPUTE_SHADER,
@@ -335,7 +452,7 @@ impl RenderComponent for Rend {
             // Use a blit, as a copy doesn't synchronize properly to the swapchain on MoltenVK
             renderer.device.handle().cmd_blit_image(
                 command_buffer.handle(),
-                *self.image.handle(),
+                *self.bloom_pass.image.handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 *swapchain_image,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
