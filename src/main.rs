@@ -18,7 +18,7 @@ use cen::graphics::Renderer;
 use cen::graphics::renderer::RenderComponent;
 use cen::vulkan::{Buffer, CommandBuffer, DescriptorSetLayout, Image};
 use crate::export::parser::{Parseable, Parser};
-use glam::{DVec2, EulerRot, Mat4, Vec3, Vec4};
+use glam::{DVec2, EulerRot, Mat4, Vec2, Vec3, Vec4};
 use gpu_allocator::MemoryLocation;
 use vsvg::{PageSize, Unit};
 use crate::mesh::gen_dodecahedron;
@@ -53,6 +53,147 @@ struct BloomPass {
     pub pipeline: PipelineKey,
     pub ds_layout: DescriptorSetLayout,
     pub image: Image,
+}
+
+struct Pentagon {
+    pub pos: Vec2,
+    pub rot: f32
+}
+
+struct Growth {
+    pentagons: Vec<Pentagon>,
+}
+
+impl Growth {
+
+    pub fn new() -> Self {
+        Growth {
+            pentagons: vec![Pentagon{ pos: Vec2::new(0.0, 0.0), rot: 0.0}],
+        }
+    }
+
+    pub fn export(&self) -> (Vec<Vec2>, Vec<i32>) {
+        let mut verts = vec![];
+        let mut indices = vec![];
+
+        let PI = std::f32::consts::PI;
+        for pent in &self.pentagons {
+            let p1 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 0. / 5. ), f32::sin(pent.rot + 2. * PI * 0. / 5. ));
+            let p2 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 1. / 5. ), f32::sin(pent.rot + 2. * PI * 1. / 5. ));
+            let p3 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 2. / 5. ), f32::sin(pent.rot + 2. * PI * 2. / 5. ));
+            let p4 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 3. / 5. ), f32::sin(pent.rot + 2. * PI * 3. / 5. ));
+            let p5 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 4. / 5. ), f32::sin(pent.rot + 2. * PI * 4. / 5. ));
+
+            let offset = verts.len() as i32;
+            verts.push(p1);
+            verts.push(p2);
+            verts.push(p3);
+            verts.push(p4);
+            verts.push(p5);
+
+            indices.push(offset + 0);
+            indices.push(offset + 1);
+            indices.push(offset + 1);
+            indices.push(offset + 2);
+            indices.push(offset + 2);
+            indices.push(offset + 3);
+            indices.push(offset + 3);
+            indices.push(offset + 4);
+            indices.push(offset + 4);
+            indices.push(offset + 0);
+        }
+
+        (verts, indices)
+    }
+
+    fn close_enough(a: &Vec2, b: &Vec2) -> bool {
+        return f32::abs(a.x - b.x) < 0.01f32 && f32::abs(a.y - b.y) < 0.01f32;
+    }
+
+    fn segments_connect(a: &Vec2, b: &Vec2, c: &Vec2, d: &Vec2) -> bool {
+        // println!("{:?} {:?} {:?} {:?}", a, b, c, d);
+        if ( Self::close_enough(a, c) && Self::close_enough(b, d) ) || ( Self::close_enough(b, c) && Self::close_enough(a, d) ) {
+            return true;
+        }
+        return false;
+    }
+
+    // Check if two lines intersect and find the intersection point
+    fn segments_intersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
+        let p = a;
+        let q = c;
+        let r = Vec2 {
+            x: b.x - a.x,
+            y: b.y - a.y,
+        };
+        let s = Vec2 {
+            x: d.x - c.x,
+            y: d.y - c.y,
+        };
+
+        let denominator = r.x * s.y - r.y * s.x;
+
+        if denominator == 0.0 {
+            // Lines are parallel or collinear
+            return false;
+        }
+
+        let t = ((q.x - p.x) * s.y - (q.y - p.y) * s.x) / denominator;
+        let u = ((q.x - p.x) * r.y - (q.y - p.y) * r.x) / denominator;
+
+        if t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 {
+            // Intersection point
+            true
+        } else {
+            // Lines do not intersect within the segments
+            false
+        }
+    }
+
+    fn get_segment(pos: &Vec2, rot: &f32, segment: u32) -> (Vec2, Vec2) {
+        let PI = std::f32::consts::PI;
+        let scale = 0.95f32;
+        let p1 = pos + scale * Vec2::new(f32::cos(rot + 2. * PI * segment as f32 / 5. ), f32::sin(rot + 2. * PI * segment as f32 / 5. ));
+        let p2 = pos + scale * Vec2::new(f32::cos(rot + 2. * PI * (segment + 1) as f32 / 5. ), f32::sin(rot + 2. * PI * (segment + 1) as f32 / 5. ));
+        (p1, p2)
+    }
+
+    pub fn add_pentagon(&mut self, edge: i32) -> Result<(), &'static str> {
+        let PI = std::f32::consts::PI;
+
+        let length = f32::cos(2. * PI * 1. / 10. ) * 2.;
+
+
+        let last_pent = self.pentagons.last().unwrap();
+
+        let mut rot = last_pent.rot + 2. * PI * ( edge - 3 ) as f32 / 5.0;
+        rot += 2. * PI * 0.5 / 5.0;
+        let pos = Vec2::new(last_pent.pos.x + length * f32::cos( rot ), last_pent.pos.y + length * f32::sin(rot));
+
+        // Check intersection
+        for pent in &mut self.pentagons {
+            let mut intersects = false;
+            for main_segment in 0..5 {
+                let segment1 = Self::get_segment(&pos, &rot, main_segment);
+                let mut this_connects = false;
+                for s in 0..5 {
+                    let segment2 = Self::get_segment(&pent.pos, &pent.rot, s);
+                    if Self::segments_intersect(segment1.0, segment1.1, segment2.0, segment2.1) {
+                        println!("Intersects");
+                        return Err("");
+                    }
+                }
+            }
+        }
+        println!("ADD-------");
+
+        self.pentagons.push(Pentagon{
+            pos,
+            rot
+        });
+
+        Ok(())
+    }
 }
 
 impl BloomPass {
@@ -134,9 +275,10 @@ impl Rend {
         renderer.device.submit_single_time_command(renderer.queue, &image_command_buffer);
 
         let meshes= vec![
-            Self::load_mesh(renderer, PathBuf::from("Dodecahedron.off")),
-            Self::load_mesh(renderer, PathBuf::from("Icosahedron.off")),
+            // Self::load_mesh(renderer, PathBuf::from("Dodecahedron.off")),
+            // Self::load_mesh(renderer, PathBuf::from("Icosahedron.off")),
             // Self::load_mesh(renderer, PathBuf::from("Icosidodecahedron.off")),
+            Self::load_scene(renderer)
         ];
 
         // Layout
@@ -191,12 +333,83 @@ impl Rend {
     }
 
     pub fn transform(&self, t: f32) -> Mat4 {
-        let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * t, 0.03 * t, 0.);
-        let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 0.5) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
-        let proj = Mat4::perspective_lh(0.8f32, 1., 0.001, 500.);
-        proj.mul(view).mul(model)
+        // let model = Mat4::from_euler(EulerRot::XYZ, 0.02 * t, 0.03 * t, 0.);
+        // let view = Mat4::look_at_rh(Vec3::new(1.0, 0.5, 0.5) * 1.3, Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
+        // let proj = Mat4::perspective_lh(0.8f32, 1., 0.001, 500.);
+        // proj.mul(view).mul(model)
+        // Mat4::IDENTITY
+        Mat4::from_scale(Vec3::splat(0.3f32))
     }
 
+    pub fn load_scene(renderer: &mut Renderer) -> Mesh {
+
+        let mut growth = Growth::new();
+        for i in 0..800 {
+            let mut edge = 0;
+            let mut added = false;
+            while !added {
+                match growth.add_pentagon(edge) {
+                    Ok(_) => {
+                        added = true;
+                        edge = 0;
+                    }
+                    Err(_) => {
+                        edge += 1;
+                        if edge > 5 {
+                            // exit
+                            added = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        let (vertices, indices) = growth.export();
+
+        let mut vertex_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            (vertices.len() * size_of::<Vec4>()) as DeviceSize,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
+
+        let mut edges: HashSet<(u32, u32)> = HashSet::new();
+        indices.chunks(2).for_each(|chunk| {
+            if chunk.len() < 2 {
+                return;
+            }
+            edges.insert((chunk[0] as u32, chunk[1] as u32) );
+        });
+
+        let mut index_buffer = Buffer::new(
+            &renderer.device,
+            &mut renderer.allocator,
+            MemoryLocation::CpuToGpu,
+            (edges.len() * 2 * size_of::<u32>()) as DeviceSize,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST
+        );
+
+        let (_, vert_mem, _) = unsafe { vertex_buffer.mapped().align_to_mut::<Vec4>() };
+        for i in 0..vertices.len() {
+            let v = vertices[i];
+            vert_mem[ i ] = Vec4::new(v.x, v.y, 0., 0.).mul( 0.1 );
+        }
+
+        let (_, index_mem, _) = unsafe { index_buffer.mapped().align_to_mut::<u32>() };
+        let mut i: usize = 0;
+        for edge in edges {
+            index_mem[ i ] = edge.0;
+            i += 1;
+            index_mem[ i ] = edge.1;
+            i += 1;
+        }
+
+        Mesh {
+            vb: vertex_buffer,
+            ib: index_buffer,
+        }
+    }
 
     pub fn load_mesh(renderer: &mut Renderer, path: PathBuf) -> Mesh {
 
