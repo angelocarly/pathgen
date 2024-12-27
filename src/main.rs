@@ -55,9 +55,11 @@ struct BloomPass {
     pub image: Image,
 }
 
+#[derive(Clone)]
 struct Pentagon {
     pub pos: Vec2,
-    pub rot: f32
+    pub rot: f32,
+    pub weight: i32,
 }
 
 struct Growth {
@@ -67,8 +69,13 @@ struct Growth {
 impl Growth {
 
     pub fn new() -> Self {
+        let PI = std::f32::consts::PI;
         Growth {
-            pentagons: vec![Pentagon{ pos: Vec2::new(0.0, 0.0), rot: 0.0}],
+            pentagons: vec![Pentagon {
+                pos: Vec2::new(0.0, 0.0),
+                rot: PI * 1.5 / 5.,
+                weight: 0
+            }],
         }
     }
 
@@ -78,6 +85,10 @@ impl Growth {
 
         let PI = std::f32::consts::PI;
         for pent in &self.pentagons {
+            if ( pent.weight + 1 ) % 2 == 0 {
+                continue;
+            }
+
             let p1 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 0. / 5. ), f32::sin(pent.rot + 2. * PI * 0. / 5. ));
             let p2 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 1. / 5. ), f32::sin(pent.rot + 2. * PI * 1. / 5. ));
             let p3 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 2. / 5. ), f32::sin(pent.rot + 2. * PI * 2. / 5. ));
@@ -213,6 +224,65 @@ impl Growth {
         (p1, p2)
     }
 
+    /**
+     * Fill in each pentagon with smaller subpentagons
+     */
+    pub fn recurse(&mut self) {
+        let mut new_pents = vec![];
+
+        let PI = std::f32::consts::PI;
+        let length = f32::cos(2. * PI * 1. / 10. ) * 2.;
+        for pent in &self.pentagons {
+            let scaled_pos = pent.pos * length * length;
+
+            new_pents.push(
+                Pentagon {
+                    pos: scaled_pos,
+                    rot: pent.rot + PI / 5.,
+                    weight: pent.weight,
+                }
+            );
+            for i in 0..5 {
+                new_pents.push(
+                    Pentagon {
+                        pos: scaled_pos + length * Vec2::new(f32::cos(pent.rot + 2. * PI * i as f32 / 5. ), f32::sin(pent.rot + 2. * PI * i as f32 / 5. )),
+                        rot: pent.rot,
+                        weight: pent.weight + 1,
+                    }
+                );
+            }
+        }
+
+        self.pentagons = new_pents;
+    }
+
+    pub fn fill_holes(&mut self) {
+
+        let current_pents = self.pentagons.clone();
+
+        let PI = std::f32::consts::PI;
+        let length = f32::cos(2. * PI * 1. / 10. ) * 2.;
+
+        let max_dist = self.pentagons.iter().map(|p| {
+            p.pos.length()
+        }).max_by(|a,b| a.total_cmp(b)).unwrap();
+
+        for pent_index in 0..current_pents.len() {
+            let pent = &current_pents[pent_index];
+            for edge in 0..5 {
+                let mut rot = pent.rot + 2. * PI * ( edge - 3 ) as f32 / 5.0;
+                rot += 2. * PI * 0.5 / 5.0;
+                let pos = Vec2::new(pent.pos.x + length * f32::cos( rot ), pent.pos.y + length * f32::sin(rot));
+
+                // Check if pos goes out of restricted area
+                if( pos.length() < max_dist ) {
+                    self.add_pentagon(pent_index as i32, edge);
+                }
+
+            }
+        }
+    }
+
     pub fn add_pentagon(&mut self, index: i32, edge: i32) -> Result<(), &'static str> {
         let PI = std::f32::consts::PI;
 
@@ -220,6 +290,7 @@ impl Growth {
 
         // Get the pentagon of interest
         let last_pent = &self.pentagons[index as usize];
+        let new_weigth = last_pent.weight + 1;
 
         let mut rot = last_pent.rot + 2. * PI * ( edge - 3 ) as f32 / 5.0;
         rot += 2. * PI * 0.5 / 5.0;
@@ -245,7 +316,8 @@ impl Growth {
 
         self.pentagons.push(Pentagon{
             pos,
-            rot
+            rot,
+            weight: new_weigth,
         });
 
         Ok(())
@@ -401,7 +473,7 @@ impl Rend {
 
         let mut growth = Growth::new();
         let mut min = 0;
-        for i in 0..2000 {
+        for i in 0..5 {
             let mut added = false;
             for p in min..growth.pentagons.len() {
                 for edge in 0..5 {
@@ -423,6 +495,13 @@ impl Rend {
                 }
             }
         }
+
+        growth.recurse();
+        growth.fill_holes();
+        growth.recurse();
+        growth.fill_holes();
+        // growth.recurse();
+        // growth.fill_holes();
 
         let (vertices, indices) = growth.export_star();
 
