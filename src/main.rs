@@ -72,6 +72,62 @@ impl Growth {
         }
     }
 
+    pub fn export_star(&self) -> (Vec<Vec2>, Vec<i32>) {
+        let mut verts = vec![];
+        let mut indices = vec![];
+
+        let PI = std::f32::consts::PI;
+        for pent in &self.pentagons {
+            let p1 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 0. / 5. ), f32::sin(pent.rot + 2. * PI * 0. / 5. ));
+            let p2 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 1. / 5. ), f32::sin(pent.rot + 2. * PI * 1. / 5. ));
+            let p3 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 2. / 5. ), f32::sin(pent.rot + 2. * PI * 2. / 5. ));
+            let p4 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 3. / 5. ), f32::sin(pent.rot + 2. * PI * 3. / 5. ));
+            let p5 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 4. / 5. ), f32::sin(pent.rot + 2. * PI * 4. / 5. ));
+
+            let s = 0.4f32;
+            let i1 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 0.5 / 5. ), f32::sin(pent.rot + 2. * PI * 0.5 / 5. ));
+            let i2 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 1.5 / 5. ), f32::sin(pent.rot + 2. * PI * 1.5 / 5. ));
+            let i3 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 2.5 / 5. ), f32::sin(pent.rot + 2. * PI * 2.5 / 5. ));
+            let i4 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 3.5 / 5. ), f32::sin(pent.rot + 2. * PI * 3.5 / 5. ));
+            let i5 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 4.5 / 5. ), f32::sin(pent.rot + 2. * PI * 4.5 / 5. ));
+
+            let offset = verts.len() as i32;
+            verts.push(p1);
+            verts.push(i1);
+            verts.push(p2);
+            verts.push(i2);
+            verts.push(p3);
+            verts.push(i3);
+            verts.push(p4);
+            verts.push(i4);
+            verts.push(p5);
+            verts.push(i5);
+
+            indices.push(offset + 0);
+            indices.push(offset + 1);
+            indices.push(offset + 1);
+            indices.push(offset + 2);
+            indices.push(offset + 2);
+            indices.push(offset + 3);
+            indices.push(offset + 3);
+            indices.push(offset + 4);
+            indices.push(offset + 4);
+            indices.push(offset + 5);
+            indices.push(offset + 5);
+            indices.push(offset + 6);
+            indices.push(offset + 6);
+            indices.push(offset + 7);
+            indices.push(offset + 7);
+            indices.push(offset + 8);
+            indices.push(offset + 8);
+            indices.push(offset + 9);
+            indices.push(offset + 9);
+            indices.push(offset + 0);
+        }
+
+        (verts, indices)
+    }
+
     pub fn export(&self) -> (Vec<Vec2>, Vec<i32>) {
         let mut verts = vec![];
         let mut indices = vec![];
@@ -150,21 +206,20 @@ impl Growth {
         }
     }
 
-    fn get_segment(pos: &Vec2, rot: &f32, segment: u32) -> (Vec2, Vec2) {
+    fn get_segment(pos: &Vec2, rot: &f32, segment: u32, scale: f32) -> (Vec2, Vec2) {
         let PI = std::f32::consts::PI;
-        let scale = 0.95f32;
         let p1 = pos + scale * Vec2::new(f32::cos(rot + 2. * PI * segment as f32 / 5. ), f32::sin(rot + 2. * PI * segment as f32 / 5. ));
         let p2 = pos + scale * Vec2::new(f32::cos(rot + 2. * PI * (segment + 1) as f32 / 5. ), f32::sin(rot + 2. * PI * (segment + 1) as f32 / 5. ));
         (p1, p2)
     }
 
-    pub fn add_pentagon(&mut self, edge: i32) -> Result<(), &'static str> {
+    pub fn add_pentagon(&mut self, index: i32, edge: i32) -> Result<(), &'static str> {
         let PI = std::f32::consts::PI;
 
         let length = f32::cos(2. * PI * 1. / 10. ) * 2.;
 
-
-        let last_pent = self.pentagons.last().unwrap();
+        // Get the pentagon of interest
+        let last_pent = &self.pentagons[index as usize];
 
         let mut rot = last_pent.rot + 2. * PI * ( edge - 3 ) as f32 / 5.0;
         rot += 2. * PI * 0.5 / 5.0;
@@ -172,20 +227,21 @@ impl Growth {
 
         // Check intersection
         for pent in &mut self.pentagons {
-            let mut intersects = false;
             for main_segment in 0..5 {
-                let segment1 = Self::get_segment(&pos, &rot, main_segment);
-                let mut this_connects = false;
+                let dif = pent.pos - pos;
+                if dif.x * dif.x + dif.y + dif.y > 2.0 {
+                    continue;
+                }
+
+                let segment1 = Self::get_segment(&pos, &rot, main_segment, 0.95);
                 for s in 0..5 {
-                    let segment2 = Self::get_segment(&pent.pos, &pent.rot, s);
+                    let segment2 = Self::get_segment(&pent.pos, &pent.rot, s, 0.95);
                     if Self::segments_intersect(segment1.0, segment1.1, segment2.0, segment2.1) {
-                        println!("Intersects");
                         return Err("");
                     }
                 }
             }
         }
-        println!("ADD-------");
 
         self.pentagons.push(Pentagon{
             pos,
@@ -338,33 +394,37 @@ impl Rend {
         // let proj = Mat4::perspective_lh(0.8f32, 1., 0.001, 500.);
         // proj.mul(view).mul(model)
         // Mat4::IDENTITY
-        Mat4::from_scale(Vec3::splat(0.3f32))
+        Mat4::from_scale(Vec3::splat(0.2f32))
     }
 
     pub fn load_scene(renderer: &mut Renderer) -> Mesh {
 
         let mut growth = Growth::new();
-        for i in 0..800 {
-            let mut edge = 0;
+        let mut min = 0;
+        for i in 0..2000 {
             let mut added = false;
-            while !added {
-                match growth.add_pentagon(edge) {
-                    Ok(_) => {
-                        added = true;
-                        edge = 0;
-                    }
-                    Err(_) => {
-                        edge += 1;
-                        if edge > 5 {
-                            // exit
+            for p in min..growth.pentagons.len() {
+                for edge in 0..5 {
+                    match growth.add_pentagon(p as i32, edge) {
+                        Ok(_) => {
                             added = true;
+                            break;
+                        }
+                        Err(_) => {
+                            if edge == 4 {
+                                // This smallest pentagon to check
+                                min = p;
+                            }
                         }
                     }
+                }
+                if added {
+                    break;
                 }
             }
         }
 
-        let (vertices, indices) = growth.export();
+        let (vertices, indices) = growth.export_star();
 
         let mut vertex_buffer = Buffer::new(
             &renderer.device,

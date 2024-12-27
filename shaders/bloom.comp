@@ -15,7 +15,7 @@ void main()
     vec4 col = vec4( 0 );
     int intensity_total = 0;
 
-    int range = 7;
+    int range = 0;
     for( int x = -range; x <= range; x++ )
     {
         for( int y = -range; y <= range; y++ )
