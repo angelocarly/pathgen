@@ -84,56 +84,61 @@ impl Growth {
         let mut indices = vec![];
 
         let PI = std::f32::consts::PI;
-        for pent in &self.pentagons {
-            if ( pent.weight + 1 ) % 2 == 0 {
-                continue;
+
+        let scales = vec![1.0, 0.66, 0.33];
+
+        for s in scales {
+            for pent in &self.pentagons {
+                if ( pent.weight + 1 ) % 2 == 0 {
+                    continue;
+                }
+
+                let p1 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 0. / 5. ), f32::sin(pent.rot + 2. * PI * 0. / 5. ));
+                let p2 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 1. / 5. ), f32::sin(pent.rot + 2. * PI * 1. / 5. ));
+                let p3 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 2. / 5. ), f32::sin(pent.rot + 2. * PI * 2. / 5. ));
+                let p4 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 3. / 5. ), f32::sin(pent.rot + 2. * PI * 3. / 5. ));
+                let p5 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 4. / 5. ), f32::sin(pent.rot + 2. * PI * 4. / 5. ));
+
+                let inner = 0.4f32;
+                let i1 = pent.pos + s * inner * Vec2::new(f32::cos(pent.rot + 2. * PI * 0.5 / 5. ), f32::sin(pent.rot + 2. * PI * 0.5 / 5. ));
+                let i2 = pent.pos + s * inner * Vec2::new(f32::cos(pent.rot + 2. * PI * 1.5 / 5. ), f32::sin(pent.rot + 2. * PI * 1.5 / 5. ));
+                let i3 = pent.pos + s * inner * Vec2::new(f32::cos(pent.rot + 2. * PI * 2.5 / 5. ), f32::sin(pent.rot + 2. * PI * 2.5 / 5. ));
+                let i4 = pent.pos + s * inner * Vec2::new(f32::cos(pent.rot + 2. * PI * 3.5 / 5. ), f32::sin(pent.rot + 2. * PI * 3.5 / 5. ));
+                let i5 = pent.pos + s * inner * Vec2::new(f32::cos(pent.rot + 2. * PI * 4.5 / 5. ), f32::sin(pent.rot + 2. * PI * 4.5 / 5. ));
+
+                let offset = verts.len() as i32;
+                verts.push(p1);
+                verts.push(i1);
+                verts.push(p2);
+                verts.push(i2);
+                verts.push(p3);
+                verts.push(i3);
+                verts.push(p4);
+                verts.push(i4);
+                verts.push(p5);
+                verts.push(i5);
+
+                indices.push(offset + 0);
+                indices.push(offset + 1);
+                indices.push(offset + 1);
+                indices.push(offset + 2);
+                indices.push(offset + 2);
+                indices.push(offset + 3);
+                indices.push(offset + 3);
+                indices.push(offset + 4);
+                indices.push(offset + 4);
+                indices.push(offset + 5);
+                indices.push(offset + 5);
+                indices.push(offset + 6);
+                indices.push(offset + 6);
+                indices.push(offset + 7);
+                indices.push(offset + 7);
+                indices.push(offset + 8);
+                indices.push(offset + 8);
+                indices.push(offset + 9);
+                indices.push(offset + 9);
+                indices.push(offset + 0);
             }
-
-            let p1 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 0. / 5. ), f32::sin(pent.rot + 2. * PI * 0. / 5. ));
-            let p2 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 1. / 5. ), f32::sin(pent.rot + 2. * PI * 1. / 5. ));
-            let p3 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 2. / 5. ), f32::sin(pent.rot + 2. * PI * 2. / 5. ));
-            let p4 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 3. / 5. ), f32::sin(pent.rot + 2. * PI * 3. / 5. ));
-            let p5 = pent.pos + Vec2::new(f32::cos(pent.rot + 2. * PI * 4. / 5. ), f32::sin(pent.rot + 2. * PI * 4. / 5. ));
-
-            let s = 0.4f32;
-            let i1 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 0.5 / 5. ), f32::sin(pent.rot + 2. * PI * 0.5 / 5. ));
-            let i2 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 1.5 / 5. ), f32::sin(pent.rot + 2. * PI * 1.5 / 5. ));
-            let i3 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 2.5 / 5. ), f32::sin(pent.rot + 2. * PI * 2.5 / 5. ));
-            let i4 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 3.5 / 5. ), f32::sin(pent.rot + 2. * PI * 3.5 / 5. ));
-            let i5 = pent.pos + s * Vec2::new(f32::cos(pent.rot + 2. * PI * 4.5 / 5. ), f32::sin(pent.rot + 2. * PI * 4.5 / 5. ));
-
-            let offset = verts.len() as i32;
-            verts.push(p1);
-            verts.push(i1);
-            verts.push(p2);
-            verts.push(i2);
-            verts.push(p3);
-            verts.push(i3);
-            verts.push(p4);
-            verts.push(i4);
-            verts.push(p5);
-            verts.push(i5);
-
-            indices.push(offset + 0);
-            indices.push(offset + 1);
-            indices.push(offset + 1);
-            indices.push(offset + 2);
-            indices.push(offset + 2);
-            indices.push(offset + 3);
-            indices.push(offset + 3);
-            indices.push(offset + 4);
-            indices.push(offset + 4);
-            indices.push(offset + 5);
-            indices.push(offset + 5);
-            indices.push(offset + 6);
-            indices.push(offset + 6);
-            indices.push(offset + 7);
-            indices.push(offset + 7);
-            indices.push(offset + 8);
-            indices.push(offset + 8);
-            indices.push(offset + 9);
-            indices.push(offset + 9);
-            indices.push(offset + 0);
         }
 
         (verts, indices)
@@ -500,8 +505,8 @@ impl Rend {
         growth.fill_holes();
         growth.recurse();
         growth.fill_holes();
-        // growth.recurse();
-        // growth.fill_holes();
+        growth.recurse();
+        growth.fill_holes();
 
         let (vertices, indices) = growth.export_star();
 
@@ -865,9 +870,9 @@ impl RenderComponent for Rend {
 
 fn export(indices: &Vec<i32>, vertices: &Vec<Vec4>, path: PathBuf, transform: Mat4) {
     // Export the data
-    let page_size = PageSize::Custom(200., 200., Unit::Mm);
+    let page_size = PageSize::Custom(105., 148.5, Unit::Mm);
 
-    let scale = 1150.;
+    let scale = 800.;
     let offset = DVec2::new(page_size.to_pixels().0, page_size.to_pixels().1) / 2.;
 
     let mut objects: Vec<Box<dyn Parseable>> = Vec::new();
